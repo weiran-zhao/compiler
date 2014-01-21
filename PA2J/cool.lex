@@ -1,14 +1,17 @@
 //----------------------------------------------------------------------------
 // Lexical analysis part of cool compiler
-//============================================================
-// Ryan (Weiran) Zhao 
-// Started: 2 days before Tue,Jan 21th 2014 10:56:33 AM EST
-// Last Modified: Tue,Jan 21th 2014 10:58:39 AM EST
 //-----------
 //References:
 //-----------
 // [1] http://www.cs.princeton.edu/~appel/modern/java/JLex/current/sample.lex
 //      examples on how to handle comments
+//============================================================
+// Ryan (Weiran) Zhao 
+// Started: 2 days before Tue,Jan 21th 2014 10:56:33 AM EST
+// Modified: Tue,Jan 21th 2014 05:10:02 PM EST
+//           handle comments and it took about 3 hours because the stupid way
+//           I was thinking
+// Last Modified: Tue,Jan 21th 2014 05:11:56 PM EST
 //----------------------------------------------------------------------------
 /*
  *  The scanner definition for COOL.
@@ -66,24 +69,36 @@ import java_cup.runtime.Symbol;
  *  work.  */
 
     switch(yy_lexical_state) {
-    case YYINITIAL:
-	/* nothing special to do in the initial state */
-	break;
-	/* If necessary, add code for other states here, e.g:
-	   case COMMENT:
-	   ...
-	   break;
-	*/
+        case YYINITIAL:
+            /* nothing special to do in the initial state */
+            break;
+        case COMMENT1:
+            if(cmtCnt>0) {
+                System.out.println("Comments not balanced");
+            }
+            break;
+        case COMMENT2:
+            System.out.println("Comments kind 2 ends by end-of-file");
+            break;
     }
     return new Symbol(TokenConstants.EOF);
 %eofval}
 
+%{
+    // this is for nested comments "(* (*"
+    private int cmtCnt = 0;
+%}
+
 %class CoolLexer
 %cup
+%state COMMENT1
+%state COMMENT2
 
-digit = [0-9]
-letter = [a-zA-Z]
-WS = [\t \n\r\f\v]+
+Digit = [0-9]
+Letter = [a-zA-Z]
+WhiteSpace = [\t \n\r\f\v]+
+NonNewlineWS = [\t \r\f\v]+
+
 a= [aA]
 b= [bB]
 c= [cC]
@@ -111,6 +126,42 @@ x= [xX]
 y= [yY]
 z= [zZ]
 %%
+<YYINITIAL>"(*"
+{   /* let's handle comments */
+    yybegin(COMMENT1); 
+    cmtCnt = 1; }
+
+<COMMENT1>"(*"
+{   /* nested comment */
+    cmtCnt+=1; }
+
+<COMMENT1>"*)"
+{   /* in comment state, "*)" ends comments, if cmtCnt=0 */
+    cmtCnt -=1;
+    if(cmtCnt==0) {
+        yybegin(YYINITIAL);
+    } 
+}
+
+<COMMENT1>.
+{   /* comment text */ }
+
+<YYINITIAL,COMMENT1>\n
+{   /* newline */
+    curr_lineno += 1; }
+
+<YYINITIAL>"--"
+{   /* another kind of comment */
+    yybegin(COMMENT2); }
+
+<COMMENT2>.
+{   /* comment text */ }
+
+<COMMENT2>\n
+{   /* one way to end comment */
+    curr_lineno+=1;
+    yybegin(YYINITIAL); }
+
 <YYINITIAL>{c}{l}{a}{s}{s}
 {   /* class */
     return new Symbol(TokenConstants.CLASS); }
@@ -255,10 +306,8 @@ z= [zZ]
 {    /* at */
     return new Symbol(TokenConstants.AT); }
 
-<YYINITIAL>{WS}
-{    /*do nothing*/
-    System.out.println("White Space of: "+yytext()); }
-
+<YYINITIAL>{NonNewlineWS}
+{    /*do nothing*/ }
 
 <YYINITIAL>. 
 { /* This rule should be the very last
